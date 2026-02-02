@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎥 Live Streaming Platform</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #f1f5f9;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+        }
+        
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            background: linear-gradient(90deg, #60a5fa, #8b5cf6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        
+        .subtitle {
+            font-size: 1.2rem;
+            color: #94a3b8;
+            margin-bottom: 50px;
+        }
+        
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 50px;
+        }
+        
+        .card {
+            background: rgba(30, 41, 59, 0.5);
+            border-radius: 16px;
+            padding: 40px 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            border-color: #60a5fa;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+        
+        .card-icon {
+            font-size: 3rem;
+            margin-bottom: 20px;
+        }
+        
+        .card-title {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            color: #f1f5f9;
+        }
+        
+        .card-description {
+            color: #94a3b8;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎥 Live Streaming Platform</h1>
+        <p class="subtitle">Профессиональная платформа для прямых трансляций</p>
+        
+        <div class="card-grid">
+            <a href="/broadcaster.html" class="card">
+                <div class="card-icon">📡</div>
+                <h3 class="card-title">Начать трансляцию</h3>
+                <p class="card-description">
+                    Запустите прямую трансляцию вашего экрана. 
+                    Захватывайте видео, аудио и делитесь контентом в реальном времени.
+                </p>
+            </a>
+            
+            <div class="card" onclick="viewStreams()">
+                <div class="card-icon">📺</div>
+                <h3 class="card-title">Активные трансляции</h3>
+                <p class="card-description">
+                    Просматривайте активные трансляции в высоком качестве. 
+                    Общайтесь в чате с другими зрителями.
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function viewStreams() {
+            // Получаем список стримов и показываем
+            fetch('/api/streams')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.streams.length > 0) {
+                        // Перенаправляем на первый доступный стрим
+                        window.location.href = `/viewer/${data.streams[0].id}`;
+                    } else {
+                        alert('Нет активных трансляций');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Ошибка получения списка трансляций');
+                });
+        }
+    </script>
+</body>
+</html>
