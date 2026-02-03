@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Сервер для приема и трансляции потоков с экрана",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js"
