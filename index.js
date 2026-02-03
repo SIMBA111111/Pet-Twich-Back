@@ -103,6 +103,43 @@ app.post('/api/streams/:id/stop', (req, res) => {
   res.json({ success: true, message: 'Stream stopped' });
 });
 
+const sseClients = new Map(); // карта для хранения соединений по streamId
+
+function sendTimeUpdate(streamId, time) {
+  const clients = sseClients.get(streamId);
+  if (clients) {
+    for (const clientRes of clients) {
+      clientRes.write(`data: ${JSON.stringify({ type: 'ffmpeg_time', time })}\n\n`);
+    }
+  }
+}
+
+app.get('/api/streams/:id/time', (req, res) => {
+  const streamId = req.params.id;
+
+  // Настраиваем headers
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+  });
+
+  // Добавляем клиента в карту
+  if (!sseClients.has(streamId)) {
+    sseClients.set(streamId, new Set());
+  }
+  sseClients.get(streamId).add(res);
+
+  // Обработка закрытия соединения
+  req.on('close', () => {
+    sseClients.get(streamId).delete(res);
+    if (sseClients.get(streamId).size === 0) {
+      sseClients.delete(streamId);
+    }
+  });
+});
+
 // WebSocket сервер
 const wss = new WebSocket.Server({ server });
 
@@ -168,6 +205,22 @@ wss.on('connection', (ws, req) => {
     console.error('WebSocket error:', error);
   });
 });
+
+function timeToSeconds(timeStr) {
+  // Разбиваем строку на компоненты
+  const parts = timeStr.split(':');
+  
+  if (parts.length === 3) {
+    const hours = parseInt(parts[0], 10);
+    const minutes = parseInt(parts[1], 10);
+    const seconds = parseFloat(parts[2]); // С учетом миллисекунд
+    
+    return hours * 3600 + minutes * 60 + seconds;
+  }
+  
+  return 0;
+}
+
 
 // Функция запуска FFmpeg для трансляции
 function startFFmpegTranscoder(streamId, streamInfo) {
@@ -244,7 +297,17 @@ segment_000.ts
     // Логирование вывода FFmpeg
     ffmpegProcess.stderr.on('data', (data) => {
       const output = data.toString();
-      console.log(`FFmpeg (${streamId}): ${output}`);
+      const match = output.match(/time=([0-9:.]+)/);
+      
+      if (match && match[1]) {
+        const currentTime = match[1];
+        const seconds = timeToSeconds(currentTime);
+        
+        // console.log(`Время в секундах: ${seconds}`);
+        
+        // Отправляем клиентам
+        sendTimeUpdate(streamId, seconds);
+      }
     });
     
     ffmpegProcess.stdout.on('data', (data) => {
