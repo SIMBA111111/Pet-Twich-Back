@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs'
+import {pool} from '../utils/pg.js'
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -29,6 +30,8 @@ export const createStream = async (req, res) => {
   const { name, quality = '720p' } = req.body;
   const streamId = uuidv4();
   
+  const data = await pool.query('INSERT INTO streams (id, title, playlisturl) VALUES ($1, $2, $3) RETURNING id', [streamId, name, `/streams/${streamId}/index.m3u8`])
+
   const streamDir = path.join(STREAMS_DIR, streamId);
   fs.mkdirSync(streamDir, { recursive: true });
   
@@ -43,6 +46,7 @@ export const createStream = async (req, res) => {
     viewers: 0,
     hlsUrl: `/streams/${streamId}/index.m3u8`
   };
+
   
   activeStreams.set(streamId, streamInfo);
   
@@ -70,14 +74,41 @@ export const getStreamsList = async (req, res) => {
 
 
 export const getStreamById = async (req, res) => {
+  console.log('=== getStreamById START ===');
+  
+  const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+  const streamId = req.params.id;
+  
+  try {
+    // Сначала проверим, существует ли стрим
+    console.log('Проверяем существование стрима...');
+    const checkResult = await pool.query(
+      'SELECT id, viewers FROM streams WHERE id = $1',
+      [streamId]
+    );
+
+    if (checkResult.rows.length === 0) {
+      console.log('Стрим не найден');
+      return res.status(404).json({ error: 'Stream not found' });
+    }
+
+    // Выполняем обновление
+    const updateResult = await pool.query(
+      `UPDATE streams
+      SET viewers = array_append(viewers, $1::text)
+      WHERE id = $2 
+      AND NOT ($1::text = ANY(viewers))
+      RETURNING id, viewers, title`,
+      [clientIp, streamId]
+    );
+
     
-  const stream = activeStreams.get(req.params.id);
-  
-  if (!stream) {
-    return res.status(404).json({ error: 'Stream not found' });
+    res.json(updateResult.rows[0]);
+    
+  } catch (error) {
+    console.error('Error', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-  
-  res.json(stream);
 }
 
 

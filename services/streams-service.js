@@ -122,6 +122,7 @@ segment_000.ts
       console.error(`FFmpeg error for stream ${streamId}:`, error);
       streamInfo.status = 'error';
     });
+    // console.log('ffmpegProcess = ', ffmpegProcess);
     
     return ffmpegProcess;
   } catch (error) {
