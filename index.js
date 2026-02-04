@@ -9,7 +9,9 @@ import { WebSocketServer } from 'ws'
 import { startFFmpegTranscoder } from './services/streams-service.js'
 import { timeToSeconds } from './utils/timeToSeconds.js'
 import { fileURLToPath } from 'url';
-import { deleteViewerFromStream, getViewersCountByStreamId } from './repositories/streams-repository.js'
+import { deleteViewerFromStream, getViewersCountByStreamId, getViewersListByStreamId } from './repositories/streams-repository.js'
+
+const activeWsConnections = new Map()
 
 const app = express();
 export const server = http.createServer(app);
@@ -37,17 +39,43 @@ wss.on('connection', (ws, req) => {
     
     console.log(`Зритель ${clientIp} подключился к сокету для отслеживания трансляции ${streamId}`);
 
+    if(!activeWsConnections.has(clientIp)) {
+      activeWsConnections.set(clientIp, ws)
+    }
+
     const handleSendViewersCount = async () => {
       const viewersCount = await getViewersCountByStreamId(streamId)
       ws.send(JSON.stringify({type: 'viewersInfo', data: viewersCount}))
     }
 
-    const intervalSendViewersCount = setInterval(handleSendViewersCount, 5000)
+    const intervalSendViewersCount = setInterval(handleSendViewersCount, 10000)
+
+    ws.onmessage = async (event) => {
+      const data = JSON.parse(event.data)
+
+      if (data.type === "chatMessage") {
+        console.log(data.message);
+
+        const viewersList = await getViewersListByStreamId(streamId)
+        console.log(viewersList);
+
+        for (let index = 0; index < viewersList.length; index++) {
+          if(activeWsConnections.has(viewersList[index])) {
+            const ws = activeWsConnections.get(viewersList[index])
+            ws.send(JSON.stringify({type: 'chatMessage', data: data.message}))
+          }          
+        }
+      }
+    }
 
     ws.on('close', async () => {
       clearInterval(intervalSendViewersCount)
 
       await deleteViewerFromStream(clientIp, streamId)
+
+      if(activeWsConnections.has(clientIp)) {
+        activeWsConnections.delete(clientIp)
+      }
 
       console.log(`Зритель ${clientIp} отключился от стрима ${streamId}`);
     });

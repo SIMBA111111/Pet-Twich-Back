@@ -174,3 +174,16 @@ export const getStreamStatus = async (req, res) => {
     hlsUrl: stream.hlsUrl
   });
 }
+
+
+// export const addMessage = async (req, res) => {
+//   const streamId = req.params.streamId
+
+//   const stream = await pool.query(
+//       'SELECT id FROM streams WHERE id = $1',
+//       [streamId]
+//     );
+
+
+
+// }

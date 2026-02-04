@@ -16,3 +16,13 @@ export const getViewersCountByStreamId = async (streamId) => {
     );
     return result.rows[0]?.count || 0;
 };
+
+export const getViewersListByStreamId = async (streamId) => {
+    const result = await pool.query(
+        'SELECT COALESCE(viewers, ARRAY[]::text[]) as viewers_list FROM streams WHERE id = $1',
+        [streamId]
+    );
+    
+    // Если запись не найдена, вернем пустой массив
+    return result.rows[0]?.viewers_list || [];
+};

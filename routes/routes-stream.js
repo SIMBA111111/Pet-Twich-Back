@@ -10,3 +10,4 @@ router.get('/streams/:id', getStreamById);
 router.get('/streams/:id/stop', stopStreamById);
 router.get('/streams/:id/time', getLiveStreamDuration);
 router.get('/streams/:streamId/status', getStreamStatus);
+// router.get('/streams/:streamId/message', addMessage);
