@@ -81,7 +81,6 @@ export const getStreamById = async (req, res) => {
   
   try {
     // Сначала проверим, существует ли стрим
-    console.log('Проверяем существование стрима...');
     const checkResult = await pool.query(
       'SELECT id, viewers FROM streams WHERE id = $1',
       [streamId]

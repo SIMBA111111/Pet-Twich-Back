@@ -9,7 +9,7 @@ import { WebSocketServer } from 'ws'
 import { startFFmpegTranscoder } from './services/streams-service.js'
 import { timeToSeconds } from './utils/timeToSeconds.js'
 import { fileURLToPath } from 'url';
-
+import { deleteViewerFromStream } from './repositories/streams-repository.js'
 
 const app = express();
 export const server = http.createServer(app);
@@ -30,8 +30,26 @@ app.use('/api', RouterStream)
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws, req) => {
-  console.log('ws connect');
     
+  if (req.url.includes('/streams/')) {
+    const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    const streamId = req.url.split('/').pop();
+    
+    console.log(`Зритель ${clientIp} подключился к сокету для отслеживания трансляции ${streamId}`);
+
+    ws.on('close', async () => {
+
+      await deleteViewerFromStream(clientIp, streamId)
+
+      console.log(`Зритель ${clientIp} отключился от стрима ${streamId}`);
+    });
+
+    return 
+  }
+
+  console.log('к сокету подключился стример с передачей медиа контента');
+
+
   const streamId = req.url.split('/').pop();
   const stream = activeStreams.get(streamId);
   
