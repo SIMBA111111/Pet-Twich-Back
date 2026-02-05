@@ -41,10 +41,16 @@ export const getStreamById = async (streamId) => {
 
 export const stopStreamById = async (streamId) => {
     if (!streamId)
-        return 
+        return 'Stream not found' 
 
-    const result = await pool.query(
-        'UPDATE streams SET islive = false WHERE id = $1',
-        [streamId]
-    );
+    try {
+        const result = await pool.query(
+            'UPDATE streams SET islive = false WHERE id = $1 RETURNING *',
+            [streamId]
+        );
+        return result.rows[0].id
+    } catch (error) {
+        console.eror('stopStreamById repository: ', error);
+                
+    }
 };

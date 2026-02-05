@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs'
 import {pool} from '../utils/pg.js'
 import { stopStreamById as stopStreamByIdRepo } from '../repositories/streams-repository.js';
+import { getStreamById as getStreamByIdRepo } from '../repositories/streams-repository.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -68,7 +69,7 @@ export const getStreamsList = async (req, res) => {
 export const getStreamById = async (req, res) => {
   console.log('=== getStreamById START ===');
   
-  const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+  const clientIp = req.headers?.['x-forwarded-for'] || req.connection.remoteAddress;
   const streamId = req.params.id;
   
   try {
@@ -105,7 +106,7 @@ export const getStreamById = async (req, res) => {
 
 export const stopStreamById = async (req, res) => {
   const streamId = req.params.id
-  const stream = await getStreamById(streamId)
+  const stream = await getStreamByIdRepo(streamId)
 
   if (!stream) {
     return res.status(404).json({ error: 'Stream not found' });
@@ -113,10 +114,10 @@ export const stopStreamById = async (req, res) => {
 
   const result = await stopStreamByIdRepo(streamId)
 
-  console.log('stopStreamById res = ', result);
+  // console.log('stopStreamById res = ', result);
   
 
-  res.json({ success: true, message: 'Stream stopped' });
+  res.json({ success: true, message: `Stream ${result} stopped` });
 }
 
 
@@ -167,13 +168,12 @@ export const checkMyActiveStream = async (req, res) => {
   const ownerIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
 
   const isExistMyStream = await pool.query('SELECT * FROM streams WHERE "owner"=$1 AND isLive=true', [ownerIp])
-  console.log('isExistMyStream: ', isExistMyStream.rows[0]);  
 
   if(!isExistMyStream.rows[0]) {
     return res.status(404).json('empty')
   }
 
-  return res.status(200).json({streamId: isExistMyStream.rows[0].id})
+  return res.status(200).json({notStopedStream: isExistMyStream.rows[0]})
 }
 
 

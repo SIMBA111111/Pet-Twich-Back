@@ -128,7 +128,6 @@ wss.on('connection', async (ws, req) => {
     if (ffmpegProcess && !ffmpegProcess.killed) {
       ffmpegProcess.stdin.end();
     }
-    await stopStreamById(streamId)
   });
   
   ws.on('error', (error) => {
