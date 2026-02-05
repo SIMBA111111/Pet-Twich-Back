@@ -67,15 +67,13 @@ export const getStreamsList = async (req, res) => {
 
 
 export const getStreamById = async (req, res) => {
-  console.log('=== getStreamById START ===');
-  
   const clientIp = req.headers?.['x-forwarded-for'] || req.connection.remoteAddress;
   const streamId = req.params.id;
   
   try {
     // Сначала проверим, существует ли стрим
     const checkResult = await pool.query(
-      'SELECT id, viewers FROM streams WHERE id = $1',
+      'SELECT id, viewers, playlisturl FROM streams WHERE id = $1',
       [streamId]
     );
 
@@ -90,12 +88,14 @@ export const getStreamById = async (req, res) => {
       SET viewers = array_append(viewers, $1::text)
       WHERE id = $2 
       AND NOT ($1::text = ANY(viewers))
-      RETURNING id, viewers, title`,
+      RETURNING id, viewers, title, playlisturl`,
       [clientIp, streamId]
     );
 
+    console.log('checkResult.rows[0] ==== ', checkResult.rows[0]);
     
-    res.json(updateResult.rows[0]);
+    
+    res.json({data: updateResult.rows[0], streamUrl: 'http://localhost:8080' + checkResult.rows[0].playlisturl + '/index.m3u8'});
     
   } catch (error) {
     console.error('Error', error);
