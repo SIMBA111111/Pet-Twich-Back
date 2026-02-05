@@ -11,7 +11,8 @@ import { timeToSeconds } from './utils/timeToSeconds.js'
 import { fileURLToPath } from 'url';
 import { deleteViewerFromStream, getViewersCountByStreamId, getViewersListByStreamId, getStreamById, stopStreamById } from './repositories/streams-repository.js'
 
-const activeWsConnections = new Map()
+const activeChatWsConnections = new Map()
+const activeViewersCountWsConnections = new Map()
 
 const app = express();
 export const server = http.createServer(app);
@@ -33,22 +34,18 @@ const wss = new WebSocketServer({ server });
 
 wss.on('connection', async (ws, req) => {
     
-  if (req.url.includes('/streams/')) {
+  // сокет для чата
+  if (req.url.includes('/chat')) {
     const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-    const streamId = req.url.split('/').pop();
-    
-    console.log(`Зритель ${clientIp} подключился к сокету для отслеживания трансляции ${streamId}`);
+    const arr = req.url.split('/');
+    const streamId = arr[arr.length - 2]
 
-    if(!activeWsConnections.has(clientIp)) {
-      activeWsConnections.set(clientIp, ws)
+
+    console.log(`Зритель ${clientIp} подключился к сокету для отслеживания чата стрима ${streamId}`);
+
+    if(!activeChatWsConnections.has(clientIp)) {
+      activeChatWsConnections.set(clientIp, ws)
     }
-
-    const handleSendViewersCount = async () => {
-      const viewersCount = await getViewersCountByStreamId(streamId)
-      ws.send(JSON.stringify({type: 'viewersInfo', data: viewersCount}))
-    }
-
-    const intervalSendViewersCount = setInterval(handleSendViewersCount, 10000)
 
     ws.onmessage = async (event) => {
       const data = JSON.parse(event.data)
@@ -60,8 +57,8 @@ wss.on('connection', async (ws, req) => {
         console.log(viewersList);
 
         for (let index = 0; index < viewersList.length; index++) {
-          if(activeWsConnections.has(viewersList[index])) {
-            const ws = activeWsConnections.get(viewersList[index])
+          if(activeChatWsConnections.has(viewersList[index])) {
+            const ws = activeChatWsConnections.get(viewersList[index])
             ws.send(JSON.stringify({type: 'chatMessage', data: data.message}))
           }          
         }
@@ -69,94 +66,97 @@ wss.on('connection', async (ws, req) => {
     }
 
     ws.on('close', async () => {
+
+      if(activeChatWsConnections.has(clientIp)) {
+        activeChatWsConnections.delete(clientIp)
+      }
+
+      console.log(`Зритель ${clientIp} отключился от чата ${streamId}`);
+    });
+
+    return 
+  }
+
+
+  // сокет для получения количества зрителей
+  if (req.url.includes('/streams/') && !req.url.includes('/chat')) {
+    const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    
+    const streamId = req.url.split('/').pop();
+
+    console.log(`Зритель ${clientIp} подключился к сокету для отслеживания количества зрителей ${streamId}`);
+
+    if(!activeViewersCountWsConnections.has(clientIp)) {
+      activeViewersCountWsConnections.set(clientIp, ws)
+    }
+
+    const handleSendViewersCount = async () => {
+      const viewersCount = await getViewersCountByStreamId(streamId)
+      ws.send(JSON.stringify({type: 'viewersInfo', data: viewersCount}))
+    }
+
+    const intervalSendViewersCount = setInterval(handleSendViewersCount, 10000)
+
+    ws.on('close', async () => {
       clearInterval(intervalSendViewersCount)
 
       await deleteViewerFromStream(clientIp, streamId)
 
-      if(activeWsConnections.has(clientIp)) {
-        activeWsConnections.delete(clientIp)
+      if(activeViewersCountWsConnections.has(clientIp)) {
+        activeViewersCountWsConnections.delete(clientIp)
       }
 
       console.log(`Зритель ${clientIp} отключился от стрима ${streamId}`);
     });
 
-
     return 
   }
 
-  console.log('к сокету подключился стример с передачей медиа контента');
+  // сокет для передачи захваченного медиа контента стримером
+  if(req.url.includes('/ws/')) {
 
+    console.log('к сокету подключился стример с передачей медиа контента');
 
-  const streamId = req.url.split('/').pop();
-  // const stream = activeStreams.get(streamId);
-  const stream = await getStreamById(streamId);
-  
-  if (!stream) {
-    ws.close(1008, 'Stream not found');
-    return;
-  }
-  
-  console.log(`WebSocket connected for stream: ${streamId}`);
-  
-  
-  // Создаем файл для записи входящих данных (для отладки)
-  // const inputFilePath = path.join(stream.dir, 'input.webm');
-  // const writeStream = fs.createWriteStream(inputFilePath);
-  
-  // Запускаем FFmpeg процесс для трансляции
-  const ffmpegProcess = startFFmpegTranscoder(streamId, stream, sseClients);
-  
-  // Обработка входящих данных от клиента
-  ws.on('message', (message) => {
-    try {
-      // Записываем для отладки
-      // writeStream.write(Buffer.from(message));
-      
-      // Отправляем в FFmpeg
-      if (ffmpegProcess.stdin.writable) {
-        ffmpegProcess.stdin.write(Buffer.from(message));
-      }
-    } catch (error) {
-      console.error('Error processing WebSocket message:', error);
-    }
-  });
-  
-  ws.on('close', async () => {
-    console.log(`WebSocket closed for stream: ${streamId}`);
+    const streamId = req.url.split('/').pop();
+    const stream = await getStreamById(streamId);
     
-    // Закрываем FFmpeg процесс
-    if (ffmpegProcess && !ffmpegProcess.killed) {
-      ffmpegProcess.stdin.end();
+    if (!stream) {
+      ws.close(1008, 'Stream not found');
+      return;
     }
-  });
-  
-  ws.on('error', (error) => {
-    console.error('WebSocket error:', error);
-  });
-});
-
-// Очистка старых стримов
-// setInterval(() => {
-//   const now = Date.now();
-//   const oneHour = 2 * 60 * 1000;
-  
-//   activeStreams.forEach((stream, streamId) => {
-//     if (stream.endedAt && (now - new Date(stream.endedAt).getTime()) > oneHour) {
-//       // Удаляем файлы стрима
-//       const streamDir = path.join(STREAMS_DIR, streamId);
-//       if (fs.existsSync(streamDir)) {
-//         fs.rmSync(streamDir, { recursive: true, force: true });
-//       }
+    
+    // Запускаем FFmpeg процесс для трансляции
+    const ffmpegProcess = startFFmpegTranscoder(streamId, stream, sseClients);
+    
+    // Обработка входящих данных от клиента
+    ws.on('message', (message) => {
+      try {
+        // Отправляем в FFmpeg
+        if (ffmpegProcess.stdin.writable) {
+          ffmpegProcess.stdin.write(Buffer.from(message));
+        }
+      } catch (error) {
+        console.error('Error processing WebSocket message:', error);
+      }
+    });
+    
+    ws.on('close', async () => {
+      console.log(`WebSocket closed for stream: ${streamId}`);
       
-//       activeStreams.delete(streamId);
-//       console.log(`Cleaned up old stream: ${streamId}`);
-//     }
-//   });
-// }, 2 * 60 * 1000); // Каждые 30 минут
+      // Закрываем FFmpeg процесс
+      if (ffmpegProcess && !ffmpegProcess.killed) {
+        ffmpegProcess.stdin.end();
+      }
+    });
+    
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error);
+    });
+  }
+});
 
 // Запуск сервера
 server.listen(PORT, () => {
   console.log(`🎥 Сервер запущен на порту ${PORT}`);
   console.log(`🌐 Откройте http://localhost:${PORT} в браузере`);
-  // console.log(`📁 Папка стримов: ${STREAMS_DIR}`);
 });
