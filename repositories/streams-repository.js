@@ -26,3 +26,25 @@ export const getViewersListByStreamId = async (streamId) => {
     // Если запись не найдена, вернем пустой массив
     return result.rows[0]?.viewers_list || [];
 };
+
+export const getStreamById = async (streamId) => {
+    if (!streamId)
+        return []
+    const result = await pool.query(
+        'SELECT * FROM streams WHERE id = $1',
+        [streamId]
+    );
+    
+    // Если запись не найдена, вернем пустой массив
+    return result.rows[0]
+};
+
+export const stopStreamById = async (streamId) => {
+    if (!streamId)
+        return 
+
+    const result = await pool.query(
+        'UPDATE streams SET islive = false WHERE id = $1',
+        [streamId]
+    );
+};

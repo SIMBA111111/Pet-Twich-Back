@@ -9,7 +9,7 @@ import { WebSocketServer } from 'ws'
 import { startFFmpegTranscoder } from './services/streams-service.js'
 import { timeToSeconds } from './utils/timeToSeconds.js'
 import { fileURLToPath } from 'url';
-import { deleteViewerFromStream, getViewersCountByStreamId, getViewersListByStreamId } from './repositories/streams-repository.js'
+import { deleteViewerFromStream, getViewersCountByStreamId, getViewersListByStreamId, getStreamById, stopStreamById } from './repositories/streams-repository.js'
 
 const activeWsConnections = new Map()
 
@@ -31,7 +31,7 @@ app.use('/api', RouterStream)
 
 const wss = new WebSocketServer({ server });
 
-wss.on('connection', (ws, req) => {
+wss.on('connection', async (ws, req) => {
     
   if (req.url.includes('/streams/')) {
     const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
@@ -88,7 +88,8 @@ wss.on('connection', (ws, req) => {
 
 
   const streamId = req.url.split('/').pop();
-  const stream = activeStreams.get(streamId);
+  // const stream = activeStreams.get(streamId);
+  const stream = await getStreamById(streamId);
   
   if (!stream) {
     ws.close(1008, 'Stream not found');
@@ -97,23 +98,19 @@ wss.on('connection', (ws, req) => {
   
   console.log(`WebSocket connected for stream: ${streamId}`);
   
-  // Обновляем счетчик зрителей
-  stream.viewers = (stream.viewers || 0) + 1;
-  stream.status = 'live';
   
   // Создаем файл для записи входящих данных (для отладки)
-  const inputFilePath = path.join(stream.dir, 'input.webm');
-  const writeStream = fs.createWriteStream(inputFilePath);
+  // const inputFilePath = path.join(stream.dir, 'input.webm');
+  // const writeStream = fs.createWriteStream(inputFilePath);
   
   // Запускаем FFmpeg процесс для трансляции
   const ffmpegProcess = startFFmpegTranscoder(streamId, stream, sseClients);
-  stream.processes.push(ffmpegProcess);
   
   // Обработка входящих данных от клиента
   ws.on('message', (message) => {
     try {
       // Записываем для отладки
-      writeStream.write(Buffer.from(message));
+      // writeStream.write(Buffer.from(message));
       
       // Отправляем в FFmpeg
       if (ffmpegProcess.stdin.writable) {
@@ -124,24 +121,14 @@ wss.on('connection', (ws, req) => {
     }
   });
   
-  ws.on('close', () => {
+  ws.on('close', async () => {
     console.log(`WebSocket closed for stream: ${streamId}`);
     
     // Закрываем FFmpeg процесс
     if (ffmpegProcess && !ffmpegProcess.killed) {
       ffmpegProcess.stdin.end();
     }
-    
-    // Закрываем файл записи
-    writeStream.end();
-    
-    // Обновляем статус стрима
-    if (stream) {
-      stream.viewers = Math.max(0, stream.viewers - 1);
-      if (stream.viewers === 0) {
-        stream.status = 'ended';
-      }
-    }
+    await stopStreamById(streamId)
   });
   
   ws.on('error', (error) => {

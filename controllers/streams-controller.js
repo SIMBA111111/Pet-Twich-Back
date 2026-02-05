@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs'
 import {pool} from '../utils/pg.js'
+import { stopStreamById as stopStreamByIdRepo } from '../repositories/streams-repository.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -29,32 +30,23 @@ export const sseClients = new Map(); // карта для хранения со�
 export const createStream = async (req, res) => {
   const { name, quality = '720p' } = req.body;
   const streamId = uuidv4();
-  
-  const data = await pool.query('INSERT INTO streams (id, title, playlisturl) VALUES ($1, $2, $3) RETURNING id', [streamId, name, `/streams/${streamId}/index.m3u8`])
+  const ownerIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
 
-  const streamDir = path.join(STREAMS_DIR, streamId);
+  
+  const data = await pool.query('INSERT INTO streams (id, title, isLive, "owner", playlisturl) VALUES ($1, $2, $3, $4, $5) RETURNING *', [streamId, name, true, ownerIp, `/streams/${streamId}`])
+  const createdStream = data.rows[0]
+
+  const streamDir = path.join(STREAMS_DIR, createdStream.id);
   fs.mkdirSync(streamDir, { recursive: true });
-  
-  const streamInfo = {
-    id: streamId,
-    name: name || 'Прямой эфир',
-    quality,
-    status: 'created',
-    createdAt: new Date().toISOString(),
-    dir: streamDir,
-    processes: [],
-    viewers: 0,
-    hlsUrl: `/streams/${streamId}/index.m3u8`
-  };
 
-  
-  activeStreams.set(streamId, streamInfo);
-  
+  // console.log('createdStream = ', createdStream);
+
+
   res.json({
     success: true,
     streamId,
     message: 'Трансляция создана',
-    streamInfo
+    createdStream    
   });
 }
 
@@ -112,22 +104,18 @@ export const getStreamById = async (req, res) => {
 
 
 export const stopStreamById = async (req, res) => {
-  const stream = activeStreams.get(req.params.id);
-  
+  const streamId = req.params.id
+  const stream = await getStreamById(streamId)
+
   if (!stream) {
     return res.status(404).json({ error: 'Stream not found' });
   }
+
+  const result = await stopStreamByIdRepo(streamId)
+
+  console.log('stopStreamById res = ', result);
   
-  // Останавливаем все процессы FFmpeg
-  stream.processes.forEach(process => {
-    if (process && !process.killed) {
-      process.kill('SIGKILL');
-    }
-  });
-  
-  stream.status = 'stopped';
-  stream.endedAt = new Date().toISOString();
-  
+
   res.json({ success: true, message: 'Stream stopped' });
 }
 
@@ -173,6 +161,19 @@ export const getStreamStatus = async (req, res) => {
     createdAt: stream.createdAt,
     hlsUrl: stream.hlsUrl
   });
+}
+
+export const checkMyActiveStream = async (req, res) => {
+  const ownerIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+
+  const isExistMyStream = await pool.query('SELECT * FROM streams WHERE "owner"=$1 AND isLive=true', [ownerIp])
+  console.log('isExistMyStream: ', isExistMyStream.rows[0]);  
+
+  if(!isExistMyStream.rows[0]) {
+    return res.status(404).json('empty')
+  }
+
+  return res.status(200).json({streamId: isExistMyStream.rows[0].id})
 }
 
 
