@@ -45,13 +45,21 @@ wss.on('connection', async (ws, req) => {
   if (req.url.includes('/chat')) {
     const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
     const arr = req.url.split('/');
-    const streamId = arr[arr.length - 2]
+    const streamId = arr[arr.length - 3]
+    const username = req.url.split('/').pop()
 
+    if(username && username != 'chat') {
+      console.log(`Зритель ${username} подключился к сокету для отслеживания чата стрима ${streamId}`);
 
-    console.log(`Зритель ${clientIp} подключился к сокету для отслеживания чата стрима ${streamId}`);
+      if(!activeChatWsConnections.has(username)) {
+        activeChatWsConnections.set(username, ws)
+      } 
+    } else {
+      console.log(`Зритель ${clientIp} подключился к сокету для отслеживания чата стрима ${streamId}`);
 
-    if(!activeChatWsConnections.has(clientIp)) {
-      activeChatWsConnections.set(clientIp, ws)
+      if(!activeChatWsConnections.has(clientIp)) {
+        activeChatWsConnections.set(clientIp, ws)
+      } 
     }
 
     ws.onmessage = async (event) => {
@@ -87,12 +95,20 @@ wss.on('connection', async (ws, req) => {
   if (req.url.includes('/streams/') && !req.url.includes('/chat')) {
     const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
     
+    const arr = req.url.split('/');
+    const username = arr[arr.length-2];
     const streamId = req.url.split('/').pop();
 
-    console.log(`Зритель ${clientIp} подключился к сокету для отслеживания количества зрителей ${streamId}`);
-
-    if(!activeViewersCountWsConnections.has(clientIp)) {
-      activeViewersCountWsConnections.set(clientIp, ws)
+    if (username) {
+      console.log(`Зритель ${username} подключился к сокету для отслеживания количества зрителей потока ${streamId}`);
+      if(!activeViewersCountWsConnections.has(username)) {
+        activeViewersCountWsConnections.set(username, ws)
+      } 
+    } else {
+      console.log(`Зритель ${clientIp} подключился к сокету для отслеживания количества зрителей потока ${streamId}`);
+      if(!activeViewersCountWsConnections.has(clientIp)) {
+        activeViewersCountWsConnections.set(clientIp, ws)
+      } 
     }
 
     const handleSendViewersCount = async () => {
@@ -102,16 +118,35 @@ wss.on('connection', async (ws, req) => {
 
     const intervalSendViewersCount = setInterval(handleSendViewersCount, 10000)
 
-    ws.on('close', async () => {
+
+    ws.on('close', async (code, reason) => {
       clearInterval(intervalSendViewersCount)
 
-      await deleteViewerFromStream(clientIp, streamId)
+      let username = ''
+      
+      if (Buffer.isBuffer(reason)) 
+        username = reason.toString('utf8');
+      else 
+        username = reason
 
-      if(activeViewersCountWsConnections.has(clientIp)) {
-        activeViewersCountWsConnections.delete(clientIp)
+      if (username) {
+        await deleteViewerFromStream(username, streamId)
+
+        if(activeViewersCountWsConnections.has(username)) {
+          activeViewersCountWsConnections.delete(username)
+        }
+
+        console.log(`Зритель ${username} отключился от стрима ${streamId}`);
+
+      } else {
+        await deleteViewerFromStream(clientIp, streamId)
+        
+        if(activeViewersCountWsConnections.has(clientIp)) {
+          activeViewersCountWsConnections.delete(clientIp)
+        }
+        
+        console.log(`Зритель ${clientIp} отключился от стрима ${streamId}`);
       }
-
-      console.log(`Зритель ${clientIp} отключился от стрима ${streamId}`);
     });
 
     return 

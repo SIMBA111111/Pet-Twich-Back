@@ -59,7 +59,16 @@ export const getStreamsList = async (req, res) => {
 
 
 export const getStreamById = async (req, res) => {
-  const clientIp = req.headers?.['x-forwarded-for'] || req.connection.remoteAddress;
+  // if(req.body) {  }
+  
+  let clientIdentificator = ''
+
+  if(req.body.username) {
+    clientIdentificator = req.body.username
+  } else {
+    clientIdentificator = req.headers?.['x-forwarded-for'] || req.connection.remoteAddress;
+  }
+  
   const streamId = req.params.id;
   
   try {
@@ -81,10 +90,10 @@ export const getStreamById = async (req, res) => {
       WHERE id = $2 
       AND NOT ($1::text = ANY(viewers))
       RETURNING id, viewers, title, playlisturl`,
-      [clientIp, streamId]
+      [clientIdentificator, streamId]
     );
 
-    console.log('checkResult.rows[0] ==== ', checkResult.rows[0]);
+    // console.log('checkResult.rows[0] ==== ', checkResult.rows[0]);
     
     
     res.json({data: updateResult.rows[0], streamUrl: 'http://localhost:8080' + checkResult.rows[0].playlisturl + '/index.m3u8'});

@@ -8,7 +8,7 @@ export const router = express.Router();
 router.post('/streams/create', createStream);
 router.get('/streams', authenticateToken, getStreamsList);
 router.get('/streams/my', checkMyActiveStream);
-router.get('/streams/:id', getStreamById);
+router.post('/streams/:id', getStreamById);
 router.get('/streams/stop/:id', stopStreamById);
 router.get('/streams/time/:id/', getLiveStreamDuration);
 router.get('/streams/status/:streamId', getStreamStatus);
