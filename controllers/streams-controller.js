@@ -53,16 +53,8 @@ export const createStream = async (req, res) => {
 
 
 export const getStreamsList = async (req, res) => {
-  const streams = Array.from(activeStreams.values()).map(stream => ({
-    id: stream.id,
-    name: stream.name,
-    status: stream.status,
-    viewers: stream.viewers,
-    createdAt: stream.createdAt,
-    hlsUrl: stream.hlsUrl
-  }));
+  console.log('getStreamsList');
   
-  res.json({ streams });
 }
 
 

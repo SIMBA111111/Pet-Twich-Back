@@ -1,9 +1,11 @@
 import express from 'express'
 import http from 'http'
 import fs from 'fs'
+import cookieParser from 'cookie-parser';
 import path from 'path';
 import cors from 'cors'
 import {router as RouterStream} from './routes/routes-stream.js'
+import {router as RouterAuth} from './routes/routes-auth.js'
 import { activeStreams, sseClients} from './controllers/streams-controller.js'
 import { WebSocketServer } from 'ws'
 import { startFFmpegTranscoder } from './services/streams-service.js'
@@ -19,8 +21,12 @@ export const server = http.createServer(app);
 const PORT = process.env.PORT || 8080;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:3000', // URL фронтенда
+  credentials: true // Важно! Разрешает передачу cookie
+}));
 app.use(express.json());
+app.use(cookieParser());
 app.use(express.static('public'));
 
 const __filename = fileURLToPath(import.meta.url);
@@ -28,6 +34,7 @@ const __dirname = path.dirname(__filename);
 
 app.use('/streams', express.static(path.join(__dirname, 'streams')));
 app.use('/api', RouterStream)
+app.use('/api/auth', RouterAuth)
 
 
 const wss = new WebSocketServer({ server });
