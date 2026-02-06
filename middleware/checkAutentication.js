@@ -3,8 +3,6 @@ import jwt from 'jsonwebtoken';
 const SECRET_KEY = 'klsfjgdnkjlSDHBKjgfbskjdhfbksdbf'
 
 export const authenticateToken = (req, res, next) => {
-    console.log('req.cookies = ', req.cookies);
-
     const token = req.cookies.jwt; // предполагая, что используешь cookie-parser
 
     if (!token) {

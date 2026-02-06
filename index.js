@@ -58,15 +58,13 @@ wss.on('connection', async (ws, req) => {
       const data = JSON.parse(event.data)
 
       if (data.type === "chatMessage") {
-        console.log(data.message);
 
         const viewersList = await getViewersListByStreamId(streamId)
-        console.log(viewersList);
 
         for (let index = 0; index < viewersList.length; index++) {
           if(activeChatWsConnections.has(viewersList[index])) {
             const ws = activeChatWsConnections.get(viewersList[index])
-            ws.send(JSON.stringify({type: 'chatMessage', data: data.message}))
+            ws.send(JSON.stringify({type: 'chatMessage', message: data.message, senderUsername: data.senderUsername}))
           }          
         }
       }

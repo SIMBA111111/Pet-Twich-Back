@@ -17,7 +17,7 @@ export const login = async (req, res) => {
 
         const token = await createToken(user.id)
 
-        res.cookie('userData', {username: user.username, email: user.email, phoneNumber: user.phone_number})
+        res.cookie('userData', JSON.stringify({username: user.username, email: user.email, phoneNumber: user.phone_number}))
         res.cookie('userId', user.id, {
             httpOnly:  true,
             // secure: true // только для https
