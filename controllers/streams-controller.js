@@ -53,13 +53,60 @@ export const createStream = async (req, res) => {
 
 
 export const getStreamsList = async (req, res) => {
-  console.log('getStreamsList');
-  
+    try {
+        const streams = await pool.query(
+            `SELECT 
+                streams.id,
+                streams.title,
+                streams.islive,
+                streams.owner_id,
+                streams.stream_key_id,
+                users.id as streamer_id,
+                users.username as streamer_name,
+                streamskeys.key as stream_key
+             FROM streams
+             JOIN users ON streams.owner_id = users.id
+             JOIN streamskeys ON streams.stream_key_id = streamskeys.id
+             WHERE streams.islive = true
+            `
+        );
+
+        // Форматируем длительность для удобства
+        const formattedStreams = streams.rows.map(stream => ({
+            id: stream.id,
+            title: stream.title,
+            isLive: stream.islive,
+            ownerId: stream.owner,
+            streamerId: stream.streamer_id,
+            streamerName: stream.streamer_name,
+            streamerAvatar: stream.streamer_avatar,
+            // streamKey: stream.stream_key,
+            streamHlsPath: `/hls/${stream.stream_key}/index.m3u8`,
+            // keyCreatedAt: stream.key_created_at,
+            // viewersCount: parseInt(stream.viewers_count) || 0,
+            // previewUrl: `/api/streams/${stream.id}/preview`
+        }));
+
+        res.status(200).json({
+            success: true,
+            count: formattedStreams.length,
+            streams: formattedStreams
+        });
+
+    } catch (error) {
+        console.error('Error in getStreamsList:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal Server Error',
+            error: error.message
+        });
+    }
 }
 
 
 export const getStreamById = async (req, res) => {
   // if(req.body) {  }
+  console.log('getStreamById');
   
   let clientIdentificator = ''
 
@@ -74,7 +121,21 @@ export const getStreamById = async (req, res) => {
   try {
     // Сначала проверим, существует ли стрим
     const checkResult = await pool.query(
-      'SELECT id, viewers, playlisturl FROM streams WHERE id = $1',
+      `SELECT
+        streams.id,
+        streams.viewers,
+        streams.title,
+        streams.islive,
+        streams.owner_id,
+        streams.stream_key_id,
+        users.id as streamer_id,
+        users.username as streamer_name,
+        streamskeys.key as stream_key
+      FROM streams
+      JOIN users ON streams.owner_id = users.id
+      JOIN streamskeys ON streams.stream_key_id = streamskeys.id
+      WHERE streams.islive = true AND streams.id = $1 
+      `,
       [streamId]
     );
 
@@ -93,10 +154,10 @@ export const getStreamById = async (req, res) => {
       [clientIdentificator, streamId]
     );
 
-    // console.log('checkResult.rows[0] ==== ', checkResult.rows[0]);
+    console.log('checkResult.rows[0] ==== ', checkResult.rows[0]);
     
     
-    res.json({data: updateResult.rows[0], streamUrl: 'http://localhost:8080' + checkResult.rows[0].playlisturl + '/index.m3u8'});
+    res.json({data: checkResult.rows[0]});
     
   } catch (error) {
     console.error('Error', error);

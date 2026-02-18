@@ -22,9 +22,10 @@ const PORT = process.env.PORT || 8080;
 
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:3000', // URL фронтенда
+  origin: '*', // URL фронтенда
   credentials: true // Важно! Разрешает передачу cookie
 }));
+app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(cookieParser());
 app.use(express.static('public'));
@@ -196,7 +197,9 @@ wss.on('connection', async (ws, req) => {
 });
 
 // Запуск сервера
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`🎥 Сервер запущен на порту ${PORT}`);
-  console.log(`🌐 Откройте http://localhost:${PORT} в браузере`);
+  console.log(`🌐 Доступен по адресам:`);
+  console.log(`   - http://localhost:${PORT} (на этой же машине)`);
+  console.log(`   - http://<IP-адрес-этой-машины>:${PORT} (из WSL или других устройств в сети)`);
 });
