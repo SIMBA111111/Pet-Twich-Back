@@ -22,7 +22,7 @@ const PORT = process.env.PORT || 8080;
 
 // Middleware
 app.use(cors({
-  origin: '*', // URL фронтенда
+  origin: ['http://localhost:3000', 'http://localhost:3001'], // URL фронтенда
   credentials: true // Важно! Разрешает передачу cookie
 }));
 app.use(express.urlencoded({ extended: true }));
@@ -49,43 +49,137 @@ wss.on('connection', async (ws, req) => {
     const streamId = arr[arr.length - 3]
     const username = req.url.split('/').pop()
 
+    console.log(`🔌 Новое подключение к чату: streamId=${streamId}, username=${username || clientIp}`);
+
     if(username && username != 'chat') {
-      console.log(`Зритель ${username} подключился к сокету для отслеживания чата стрима ${streamId}`);
+      console.log(`👤 Зритель ${username} подключился к сокету для отслеживания чата стрима ${streamId}`);
 
       if(!activeChatWsConnections.has(username)) {
         activeChatWsConnections.set(username, ws)
-      } 
+      } else {
+        // Если уже есть соединение с таким username, заменяем его
+        activeChatWsConnections.set(username, ws)
+      }
     } else {
-      console.log(`Зритель ${clientIp} подключился к сокету для отслеживания чата стрима ${streamId}`);
+      console.log(`🖥️ Зритель ${clientIp} подключился к сокету для отслеживания чата стрима ${streamId}`);
 
       if(!activeChatWsConnections.has(clientIp)) {
         activeChatWsConnections.set(clientIp, ws)
-      } 
-    }
-
-    ws.onmessage = async (event) => {
-      const data = JSON.parse(event.data)
-
-      if (data.type === "chatMessage") {
-
-        const viewersList = await getViewersListByStreamId(streamId)
-
-        for (let index = 0; index < viewersList.length; index++) {
-          if(activeChatWsConnections.has(viewersList[index])) {
-            const ws = activeChatWsConnections.get(viewersList[index])
-            ws.send(JSON.stringify({type: 'chatMessage', message: data.message, senderUsername: data.senderUsername}))
-          }          
-        }
+      } else {
+        activeChatWsConnections.set(clientIp, ws)
       }
     }
+
+    // Отправляем подтверждение подключения
+    ws.send(JSON.stringify({ 
+      type: 'connection', 
+      status: 'connected',
+      message: 'Вы подключены к чату' 
+    }));
+
+    ws.on('message', async (data) => {
+      try {
+        // Проверяем, что данные - это строка
+        if (typeof data !== 'string') {
+          // Если это Buffer, конвертируем в строку
+          data = data.toString();
+        }
+        
+        // Проверяем, что данные не пустые
+        if (!data || data.trim() === '') {
+          console.log('⚠️ Получено пустое сообщение');
+          return;
+        }
+
+        console.log('📨 Получены сырые данные:', data);
+        
+        const parsedData = JSON.parse(data);
+        console.log('📨 Получено сообщение от клиента:', parsedData);
+
+        if (parsedData.type === "chatMessage") {
+          console.log(`💬 Сообщение от ${parsedData.senderUsername}: ${parsedData.message}`);
+
+          // Получаем список зрителей
+          const viewersList = await getViewersListByStreamId(streamId)
+          console.log('👥 Список зрителей:', viewersList);
+
+          // Отправляем сообщение ВСЕМ зрителям, включая отправителя
+          for (let index = 0; index < viewersList.length; index++) {
+            const viewer = viewersList[index];
+            
+            // Проверяем оба варианта ключей - и username, и clientIp
+            let wsConnection = activeChatWsConnections.get(viewer);
+            
+            // Если не нашли по username, пробуем найти по clientIp
+            if (!wsConnection) {
+              // Проходим по всем соединениям в поисках нужного viewer
+              for (let [key, value] of activeChatWsConnections.entries()) {
+                if (key === viewer || value === viewer) {
+                  wsConnection = value;
+                  break;
+                }
+              }
+            }
+
+            if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+              const messageToSend = JSON.stringify({
+                type: 'chatMessage',
+                message: parsedData.message,
+                senderUsername: parsedData.senderUsername
+              });
+              
+              console.log(`📤 Отправка сообщения зрителю ${viewer}`);
+              wsConnection.send(messageToSend);
+            } else {
+              console.log(`⚠️ Соединение с зрителем ${viewer} не активно или не найдено`);
+            }
+          }
+
+          // Также отправляем сообщение всем анонимным зрителям (по clientIp)
+          let anonymousSent = 0;
+          activeChatWsConnections.forEach((connection, key) => {
+            // Если ключ не в viewersList и это не username (содержит точки или двоеточия как IP)
+            if (!viewersList.includes(key) && (key.includes('.') || key.includes(':'))) {
+              if (connection.readyState === WebSocket.OPEN) {
+                const messageToSend = JSON.stringify({
+                  type: 'chatMessage',
+                  message: parsedData.message,
+                  senderUsername: parsedData.senderUsername
+                });
+                console.log(`📤 Отправка сообщения анонимному зрителю ${key}`);
+                connection.send(messageToSend);
+                anonymousSent++;
+              }
+            }
+          });
+          
+          console.log(`📊 Итого отправлено: ${viewersList.length} зарегистрированным + ${anonymousSent} анонимным`);
+        }
+      } catch (error) {
+        console.error('❌ Ошибка обработки сообщения:', error);
+        console.error('Проблемные данные:', data);
+      }
+    });
 
     ws.on('close', async () => {
+      console.log(`🔌 Зритель ${clientIp} отключился от чата ${streamId}`);
 
-      if(activeChatWsConnections.has(clientIp)) {
-        activeChatWsConnections.delete(clientIp)
+      // Удаляем из активных соединений
+      if (username && username != 'chat') {
+        if (activeChatWsConnections.has(username)) {
+          activeChatWsConnections.delete(username)
+        }
+      } else {
+        if (activeChatWsConnections.has(clientIp)) {
+          activeChatWsConnections.delete(clientIp)
+        }
       }
+      
+      console.log(`📊 Осталось активных чат соединений: ${activeChatWsConnections.size}`);
+    });
 
-      console.log(`Зритель ${clientIp} отключился от чата ${streamId}`);
+    ws.on('error', (error) => {
+      console.error('❌ WebSocket ошибка в чате:', error);
     });
 
     return 
